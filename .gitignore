@@ -1,0 +1,47 @@
+# ==========================
+# Dependencies
+# ==========================
+node_modules/
+
+# Package Managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment Files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build
+dist/
+build/
+coverage/
+
+# Temporary
+tmp/
+temp/
+.cache/
+
+# Docker
+docker-data/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
