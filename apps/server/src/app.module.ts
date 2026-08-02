@@ -4,12 +4,18 @@ import { AppService } from './app.service';
 import { PrismaModule } from './database/prisma.module';
 import { HealthModule } from './health/health.module';
 import { ConfigModule } from '@nestjs/config/dist/config.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import config from './config';
 
-ConfigModule.forRoot({
-  isGlobal: true,
-});
 @Module({
-  imports: [PrismaModule, HealthModule],
+  imports: [  
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: config,
+      envFilePath: '.env',
+    }),
+    PrismaModule, HealthModule, AuthModule, UsersModule],
   controllers: [AppController],
   providers: [AppService],
 })

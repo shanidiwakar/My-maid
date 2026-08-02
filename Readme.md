@@ -197,7 +197,7 @@ Run Migration
 npx prisma migrate dev --name init
 ```
 
-Open Prisma Studio
+Open Prisma Studio / Database
 
 ```bash
 npx prisma studio
