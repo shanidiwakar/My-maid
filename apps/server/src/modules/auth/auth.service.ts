@@ -123,8 +123,9 @@ export class AuthService {
       user: {
         id: user.id,
         phone: user.phone,
-        fullName: user.fullName,
         role: user.role,
+        status: user.status,
+        isVerified: user.isVerified,
       },
     };
   }

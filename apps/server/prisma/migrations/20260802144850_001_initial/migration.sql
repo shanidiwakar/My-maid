@@ -1,11 +1,6 @@
-/*
-  Warnings:
+-- CreateEnum
+CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY');
 
-  - You are about to drop the column `password` on the `User` table. All the data in the column will be lost.
-  - You are about to drop the column `refreshToken` on the `User` table. All the data in the column will be lost.
-  - The `role` column on the `User` table would be dropped and recreated. This will lead to data loss if there is data in the column.
-
-*/
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('CUSTOMER', 'PARTNER', 'ADMIN', 'SUPER_ADMIN');
 
@@ -15,18 +10,38 @@ CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'BLOCKED');
 -- CreateEnum
 CREATE TYPE "OtpPurpose" AS ENUM ('LOGIN', 'REGISTER', 'RESET_PASSWORD');
 
--- AlterTable
-ALTER TABLE "User" DROP COLUMN "password",
-DROP COLUMN "refreshToken",
-ADD COLUMN     "deletedAt" TIMESTAMP(3),
-ADD COLUMN     "lastLoginAt" TIMESTAMP(3),
-ADD COLUMN     "profileImage" TEXT,
-ADD COLUMN     "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
-DROP COLUMN "role",
-ADD COLUMN     "role" "UserRole" NOT NULL DEFAULT 'CUSTOMER';
+-- CreateTable
+CREATE TABLE "User" (
+    "id" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "role" "UserRole" NOT NULL DEFAULT 'CUSTOMER',
+    "status" "UserStatus" NOT NULL DEFAULT 'ACTIVE',
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "lastLoginAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
 
--- DropEnum
-DROP TYPE "Role";
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserProfile" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "firstName" TEXT NOT NULL,
+    "lastName" TEXT,
+    "email" TEXT,
+    "gender" "Gender",
+    "dob" TIMESTAMP(3),
+    "avatar" TEXT,
+    "language" TEXT NOT NULL DEFAULT 'en',
+    "referralCode" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UserProfile_pkey" PRIMARY KEY ("id")
+);
 
 -- CreateTable
 CREATE TABLE "RefreshToken" (
@@ -38,6 +53,7 @@ CREATE TABLE "RefreshToken" (
     "deviceName" TEXT,
     "ipAddress" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     "revokedAt" TIMESTAMP(3),
 
     CONSTRAINT "RefreshToken_pkey" PRIMARY KEY ("id")
@@ -65,6 +81,7 @@ CREATE TABLE "City" (
     "country" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "City_pkey" PRIMARY KEY ("id")
 );
@@ -77,6 +94,7 @@ CREATE TABLE "ServiceArea" (
     "pincode" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "ServiceArea_pkey" PRIMARY KEY ("id")
 );
@@ -93,13 +111,28 @@ CREATE TABLE "AppConfiguration" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");
+
+-- CreateIndex
+CREATE INDEX "User_role_idx" ON "User"("role");
+
+-- CreateIndex
+CREATE INDEX "User_status_idx" ON "User"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserProfile_userId_key" ON "UserProfile"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserProfile_referralCode_key" ON "UserProfile"("referralCode");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "RefreshToken_token_key" ON "RefreshToken"("token");
 
 -- CreateIndex
 CREATE INDEX "RefreshToken_userId_idx" ON "RefreshToken"("userId");
 
 -- CreateIndex
-CREATE INDEX "OtpVerification_phone_idx" ON "OtpVerification"("phone");
+CREATE INDEX "OtpVerification_phone_purpose_idx" ON "OtpVerification"("phone", "purpose");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "City_name_state_key" ON "City"("name", "state");
@@ -110,11 +143,8 @@ CREATE INDEX "ServiceArea_cityId_idx" ON "ServiceArea"("cityId");
 -- CreateIndex
 CREATE UNIQUE INDEX "AppConfiguration_key_key" ON "AppConfiguration"("key");
 
--- CreateIndex
-CREATE INDEX "User_phone_idx" ON "User"("phone");
-
--- CreateIndex
-CREATE INDEX "User_role_idx" ON "User"("role");
+-- AddForeignKey
+ALTER TABLE "UserProfile" ADD CONSTRAINT "UserProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

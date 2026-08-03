@@ -7,6 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
 enum UserRole {
   CUSTOMER
   PARTNER
@@ -27,35 +34,53 @@ enum OtpPurpose {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  phone        String     @unique
-  email        String?    @unique
-  fullName     String?
-  profileImage String?
-  role         UserRole   @default(CUSTOMER)
-  status       UserStatus @default(ACTIVE)
-  isVerified   Boolean    @default(false)
-  lastLoginAt  DateTime?
+  id          String     @id @default(cuid())
+  phone       String     @unique
+  role        UserRole   @default(CUSTOMER)
+  status      UserStatus @default(ACTIVE)
+  isVerified  Boolean    @default(false)
+  lastLoginAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  profile       UserProfile?
   refreshTokens RefreshToken[]
 
-  @@index([phone])
   @@index([role])
+  @@index([status])
+}
+
+model UserProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  firstName    String
+  lastName     String?
+  email        String?
+  gender       Gender?
+  dob          DateTime?
+  avatar       String?
+  language     String    @default("en")
+  referralCode String?   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model RefreshToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  token      String   @unique
+  token      String    @unique
   expiresAt  DateTime
   deviceId   String?
   deviceName String?
   ipAddress  String?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   revokedAt  DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -73,33 +98,35 @@ model OtpVerification {
   attempts   Int        @default(0)
   createdAt  DateTime   @default(now())
 
-  @@index([phone])
+  @@index([phone, purpose])
 }
 
 model City {
-  id        String  @id @default(cuid())
-  name      String
-  state     String
-  country   String
-  isActive  Boolean @default(true)
+  id       String  @id @default(cuid())
+  name     String
+  state    String
+  country  String
+  isActive Boolean @default(true)
 
   serviceAreas ServiceArea[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([name, state])
 }
 
 model ServiceArea {
-  id        String  @id @default(cuid())
-  cityId    String
-  name      String
-  pincode   String
-  isActive  Boolean @default(true)
+  id       String  @id @default(cuid())
+  cityId   String
+  name     String
+  pincode  String
+  isActive Boolean @default(true)
 
   city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([cityId])
 }
