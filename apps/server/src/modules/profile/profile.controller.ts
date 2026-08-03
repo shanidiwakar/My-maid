@@ -19,16 +19,12 @@ export class ProfileController {
     getProfile(@CurrentUser() user: JwtPayload) {
         return this.profileService.getProfile(user.sub);
     }
-    
+
     @Put()
     updateProfile(
         @CurrentUser() user: JwtPayload,
         @Body() dto: UpdateProfileDto,
     ) {
-        console.log('PUT /profile hit');
-  console.log(user);
-  console.log(dto);
-
         return this.profileService.updateProfile(
             user.sub,
             dto,

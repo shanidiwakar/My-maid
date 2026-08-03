@@ -7,6 +7,8 @@ import { ConfigModule } from '@nestjs/config/dist/config.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProfileModule } from './modules/profile/profile.module';
+import { AddressModule } from './modules/address/address.module';
+import { LocationModule } from './modules/location/location.module';
 import config from './config';
 
 @Module({
@@ -16,7 +18,7 @@ import config from './config';
       load: config,
       envFilePath: '.env',
     }),
-    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule],
+    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule, AddressModule, LocationModule],
   controllers: [AppController],
   providers: [AppService],
 })
