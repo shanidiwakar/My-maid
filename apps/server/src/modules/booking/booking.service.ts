@@ -1,8 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { Address, BookingStatus, Service } from '@prisma/client';
-import { paginate } from 'src/common/utils/pagination.util';
+import { Address, BookingStatus, Prisma, Service } from '@prisma/client';
 import { BookingQueryDto } from './dto/booking-query.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 
@@ -215,30 +214,90 @@ export class BookingService {
       status,
     } = query;
 
-    const where = {
+    const where: Prisma.BookingWhereInput = {
       userId,
       ...(status && { status }),
     };
 
-    return paginate(this.prisma.booking, {
-      page,
-      limit,
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        bookingNumber: true,
-        serviceName: true,
-        bookingDate: true,
-        status: true,
-        finalAmount: true,
-        createdAt: true,
-      },
-    });
-  }
+    const skip = (page - 1) * limit;
 
+    const [bookings, total] =
+      await Promise.all([
+        this.prisma.booking.findMany({
+          where,
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limit,
+
+          select: {
+            id: true,
+            bookingNumber: true,
+            serviceName: true,
+            bookingDate: true,
+            status: true,
+            finalAmount: true,
+            createdAt: true,
+
+            partner: {
+              select: {
+                id: true,
+                rating: true,
+
+                user: {
+                  select: {
+                    profile: {
+                      select: {
+                        firstName: true,
+                        lastName: true,
+                        avatar: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+
+        this.prisma.booking.count({
+          where,
+        }),
+      ]);
+
+    return {
+      data: bookings.map((booking) => ({
+        ...booking,
+
+        partner: booking.partner
+          ? {
+            id: booking.partner.id,
+
+            name: [
+              booking.partner.user.profile?.firstName,
+              booking.partner.user.profile?.lastName,
+            ]
+              .filter(Boolean)
+              .join(' '),
+
+            avatar:
+              booking.partner.user.profile?.avatar ?? null,
+
+            rating: booking.partner.rating,
+          }
+          : null,
+      })),
+
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+  
   async getBooking(
     userId: string,
     bookingId: string,
@@ -248,6 +307,7 @@ export class BookingService {
         where: {
           id: bookingId,
         },
+
         select: {
           id: true,
           bookingNumber: true,
@@ -263,6 +323,7 @@ export class BookingService {
           slotEnd: true,
           status: true,
           notes: true,
+
           houseNumber: true,
           buildingName: true,
           addressLine1: true,
@@ -271,8 +332,31 @@ export class BookingService {
           cityName: true,
           serviceAreaName: true,
           pincode: true,
+
           createdAt: true,
+
           userId: true,
+
+          // Assigned partner
+          partner: {
+            select: {
+              id: true,
+              rating: true,
+              totalJobs: true,
+
+              user: {
+                select: {
+                  profile: {
+                    select: {
+                      firstName: true,
+                      lastName: true,
+                      avatar: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
 
@@ -288,8 +372,31 @@ export class BookingService {
       );
     }
 
-    return booking;
-  }
+    return {
+      ...booking,
+
+      partner: booking.partner
+        ? {
+          id: booking.partner.id,
+
+          name: [
+            booking.partner.user.profile
+              ?.firstName,
+            booking.partner.user.profile
+              ?.lastName,
+          ]
+            .filter(Boolean)
+            .join(' '),
+
+          avatar:
+            booking.partner.user.profile
+              ?.avatar ?? null,
+
+          rating: booking.partner.rating,
+        }
+        : null,
+    };
+  };
 
   async cancelBooking(
     userId: string,
@@ -314,6 +421,7 @@ export class BookingService {
         'You are not authorized to cancel this booking',
       );
     }
+
     const cancellableStatuses: BookingStatus[] = [
       BookingStatus.PENDING,
       BookingStatus.CONFIRMED,
@@ -325,13 +433,69 @@ export class BookingService {
       );
     }
 
-    return this.prisma.booking.update({
+    const result =
+      await this.prisma.booking.updateMany({
+        where: {
+          id: bookingId,
+          userId,
+          status: {
+            in: [
+              BookingStatus.PENDING,
+              BookingStatus.CONFIRMED,
+            ],
+          },
+        },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancelledReason: dto.reason,
+        },
+      });
+
+    if (result.count !== 1) {
+      throw new BadRequestException(
+        'Booking can no longer be cancelled',
+      );
+    }
+
+    return this.prisma.booking.findUnique({
       where: {
-        id: booking.id,
+        id: bookingId,
+      },
+      select: {
+        id: true,
+        bookingNumber: true,
+        status: true,
+        cancelledReason: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  private async transitionBooking(
+    bookingId: string,
+    from: BookingStatus,
+    to: BookingStatus,
+    tx: Prisma.TransactionClient,
+  ) {
+    const result = await tx.booking.updateMany({
+      where: {
+        id: bookingId,
+        status: from,
       },
       data: {
-        status: BookingStatus.CANCELLED,
-        cancelledReason: dto.reason,
+        status: to,
+      },
+    });
+
+    if (result.count !== 1) {
+      throw new BadRequestException(
+        `Booking cannot move from ${from} to ${to}`,
+      );
+    }
+
+    return tx.booking.findUnique({
+      where: {
+        id: bookingId,
       },
     });
   }

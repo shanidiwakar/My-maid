@@ -17,6 +17,9 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core/constants';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { BookingModule } from './modules/booking/booking.module';
+import { PartnerModule } from './modules/partner/partner.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { CustomerModule } from './modules/customer/customer.module';
 
 @Module({
   imports: [
@@ -25,7 +28,7 @@ import { BookingModule } from './modules/booking/booking.module';
       load: config,
       envFilePath: '.env',
     }),
-    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule, AddressModule, LocationModule, ServiceModule, RecommendationModule, BookingModule],
+    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule, AddressModule, LocationModule, ServiceModule, RecommendationModule, BookingModule, PartnerModule, AdminModule, CustomerModule],
   controllers: [AppController],
   providers: [
     AppService,

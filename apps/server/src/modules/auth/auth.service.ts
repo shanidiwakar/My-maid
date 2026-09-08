@@ -1,11 +1,15 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '@nestjs/config/dist/config.service';
 import { JwtConfig } from 'src/config/Jwt.config';
+import { UserStatus } from '@prisma/client';
 
 
 @Injectable()
@@ -14,7 +18,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private config: ConfigService,
-  ) {}
+  ) { }
 
   async sendOtp(phone: string) {
     const otp = '123456';
@@ -75,7 +79,6 @@ export class AuthService {
       user = await this.prisma.user.create({
         data: {
           phone,
-          role: 'CUSTOMER',
           isVerified: true,
         },
       });
@@ -98,14 +101,14 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
-    
+
     const jwtConfig = this.config.get<JwtConfig>('jwt');
 
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: jwtConfig!.refreshSecret,
       expiresIn: jwtConfig!.refreshExpiresIn,
     });
-    
+
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
@@ -115,7 +118,7 @@ export class AuthService {
         ),
       },
     });
-    
+
     return {
       message: 'Login successful',
       accessToken,
@@ -178,6 +181,65 @@ export class AuthService {
 
     return {
       message: 'Logged out successfully',
+    };
+  }
+
+  async devLogin(phone: string) {
+    if (
+      process.env.NODE_ENV !== 'development'
+    ) {
+      throw new NotFoundException();
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        phone,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(
+        'Development user not found',
+      );
+    }
+
+    if (!user.isVerified) {
+      throw new BadRequestException(
+        'Development user is not verified',
+      );
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException(
+        'User account is not active',
+      );
+    }
+
+    const payload = {
+      sub: user.id,
+      phone: user.phone,
+      role: user.role,
+    };
+
+    const accessToken =
+      await this.jwtService.signAsync(payload);
+
+    await this.prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        lastLoginAt: new Date(),
+      },
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        role: user.role,
+      },
     };
   }
 }

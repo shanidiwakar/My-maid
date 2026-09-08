@@ -1,4 +1,4 @@
-import {Body, Controller, Get, Post, UseGuards} from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { SendOtpDto } from './dto/send-otp.dto';
@@ -6,15 +6,16 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { DevLoginDto } from './dto/dev-login.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   @Post('send-otp')
   sendOtp(@Body() dto: SendOtpDto) {
@@ -47,4 +48,21 @@ export class AuthController {
     return this.authService.logout(dto.refreshToken);
   }
 
+  @Post('dev-login')
+  @ApiOperation({
+    summary: 'Development login',
+    description:
+      'Development-only login for seeded users.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Development login successful',
+  })
+  devLogin(
+    @Body() dto: DevLoginDto,
+  ) {
+    return this.authService.devLogin(
+      dto.phone,
+    );
+  }
 }
