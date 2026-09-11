@@ -24,6 +24,10 @@ model User {
   customer Customer?
   partner  Partner?
 
+  notifications Notification[]
+
+  deviceTokens DeviceToken[]
+
   refreshTokens RefreshToken[]
   profile       UserProfile?
 
@@ -267,6 +271,81 @@ model PartnerService {
   @@index([serviceId])
 }
 
+model Notification {
+  id        String               @id @default(cuid())
+  userId    String
+  type      NotificationType
+  audience  NotificationAudience
+
+  title     String
+  message   String
+
+  bookingId String?
+
+  outbox NotificationOutbox?
+
+  isRead    Boolean              @default(false)
+  readAt    DateTime?
+
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, audience])
+  @@index([userId, audience, isRead])
+  @@index([createdAt])
+}
+
+model NotificationOutbox {
+  id             String                   @id @default(cuid())
+  notificationId String                   @unique
+  userId         String
+  audience       NotificationAudience
+
+  status         NotificationOutboxStatus @default(PENDING)
+
+  retryCount     Int                      @default(0)
+  maxRetries     Int                      @default(5)
+
+  nextRetryAt    DateTime?
+  processingAt   DateTime?
+  sentAt         DateTime?
+  failedAt       DateTime?
+
+  lastError      String?
+
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  notification   Notification             @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([userId, audience])
+  @@index([createdAt])
+}
+
+model DeviceToken {
+  id        String               @id @default(cuid())
+  userId    String
+  token     String               @unique
+  platform  DevicePlatform
+  audience  NotificationAudience?
+
+  deviceId  String?
+  isActive  Boolean              @default(true)
+
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, audience])
+  @@index([userId, isActive])
+}
+
 model AppConfiguration {
   id          String   @id @default(cuid())
   key         String   @unique
@@ -328,4 +407,33 @@ enum BookingStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum NotificationType {
+  BOOKING_CREATED
+  PARTNER_ASSIGNED
+  PARTNER_ARRIVING
+  BOOKING_STARTED
+  BOOKING_COMPLETED
+  BOOKING_CANCELLED
+  BOOKING_REJECTED
+}
+
+enum NotificationAudience {
+  CUSTOMER
+  PARTNER
+  ADMIN
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
 }

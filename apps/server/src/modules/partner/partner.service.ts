@@ -1,27 +1,29 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { UpdatePartnerServicesDto } from './dto/update-partner-services.dto';
-import { BookingStatus, PartnerAvailability, PartnerStatus, Prisma } from '@prisma/client';
+import { BookingStatus, NotificationAudience, NotificationType, PartnerAvailability, PartnerStatus, Prisma } from '@prisma/client';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { ApplyPartnerDto } from './dto/apply-partner.dto';
 import { PartnerBookingQueryDto } from './dto/partner-booking-query.dto';
 import { UpdatePartnerLocationDto } from './dto/update-partner-location.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class PartnerService {
 
     constructor(
         private readonly prisma: PrismaService,
+        private readonly notificationService: NotificationService,
     ) { }
 
     async updateAvailability(
-        partnerId: string,
+        userId: string,
         dto: UpdateAvailabilityDto,
     ) {
         const partner =
             await this.prisma.partner.findUnique({
                 where: {
-                    id: partnerId,
+                    userId,
                 },
             });
 
@@ -600,6 +602,8 @@ export class PartnerService {
                 },
                 select: {
                     id: true,
+                    bookingNumber: true,
+                    userId: true,
                     partnerId: true,
                     status: true,
                 },
@@ -659,6 +663,27 @@ export class PartnerService {
                     },
                 });
 
+                await this.notificationService.create({
+                    userId: booking.userId,
+
+                    type:
+                        NotificationType.BOOKING_REJECTED,
+
+                    audience:
+                        NotificationAudience.CUSTOMER,
+
+                    title:
+                        'Partner unavailable',
+
+                    message:
+                        `The assigned partner could not accept booking ${booking.bookingNumber}. We will assign another partner.`,
+
+                    bookingId:
+                        booking.id,
+
+                    tx,
+                });
+
                 return tx.booking.findUnique({
                     where: {
                         id: bookingId,
@@ -695,6 +720,8 @@ export class PartnerService {
                 },
                 select: {
                     id: true,
+                    bookingNumber: true,
+                    userId: true,
                     partnerId: true,
                     status: true,
                 },
@@ -712,30 +739,56 @@ export class PartnerService {
             );
         }
 
-        const result =
-            await this.prisma.booking.updateMany({
-                where: {
-                    id: bookingId,
-                    partnerId: partner.id,
-                    status: BookingStatus.CONFIRMED,
-                },
-                data: {
-                    status:
-                        BookingStatus.PARTNER_ARRIVING,
-                },
-            });
+        return this.prisma.$transaction(
+            async (tx) => {
+                const result =
+                    await tx.booking.updateMany({
+                        where: {
+                            id: bookingId,
+                            partnerId: partner.id,
+                            status:
+                                BookingStatus.PARTNER_ASSIGNED,
+                        },
+                        data: {
+                            status:
+                                BookingStatus.PARTNER_ARRIVING,
+                        },
+                    });
 
-        if (result.count !== 1) {
-            throw new BadRequestException(
-                'Booking cannot be marked as arriving',
-            );
-        }
+                if (result.count !== 1) {
+                    throw new BadRequestException(
+                        'Booking cannot be marked as arriving',
+                    );
+                }
 
-        return this.prisma.booking.findUnique({
-            where: {
-                id: bookingId,
+                await this.notificationService.create({
+                    userId: booking.userId,
+
+                    type:
+                        NotificationType.PARTNER_ARRIVING,
+
+                    audience:
+                        NotificationAudience.CUSTOMER,
+
+                    title:
+                        'Partner is on the way',
+
+                    message:
+                        `Your partner is on the way for booking ${booking.bookingNumber}.`,
+
+                    bookingId:
+                        booking.id,
+
+                    tx,
+                });
+
+                return tx.booking.findUnique({
+                    where: {
+                        id: bookingId,
+                    },
+                });
             },
-        });
+        );
     }
 
     async startBooking(
@@ -765,6 +818,8 @@ export class PartnerService {
                 },
                 select: {
                     id: true,
+                    bookingNumber: true,
+                    userId: true,
                     partnerId: true,
                     status: true,
                 },
@@ -782,31 +837,56 @@ export class PartnerService {
             );
         }
 
-        const result =
-            await this.prisma.booking.updateMany({
-                where: {
-                    id: bookingId,
-                    partnerId: partner.id,
-                    status:
-                        BookingStatus.PARTNER_ARRIVING,
-                },
-                data: {
-                    status:
-                        BookingStatus.IN_PROGRESS,
-                },
-            });
+        return this.prisma.$transaction(
+            async (tx) => {
+                const result =
+                    await tx.booking.updateMany({
+                        where: {
+                            id: bookingId,
+                            partnerId: partner.id,
+                            status:
+                                BookingStatus.PARTNER_ARRIVING,
+                        },
+                        data: {
+                            status:
+                                BookingStatus.IN_PROGRESS,
+                        },
+                    });
 
-        if (result.count !== 1) {
-            throw new BadRequestException(
-                'Booking cannot be started',
-            );
-        }
+                if (result.count !== 1) {
+                    throw new BadRequestException(
+                        'Booking cannot be started',
+                    );
+                }
 
-        return this.prisma.booking.findUnique({
-            where: {
-                id: bookingId,
+                await this.notificationService.create({
+                    userId: booking.userId,
+
+                    type:
+                        NotificationType.BOOKING_STARTED,
+
+                    audience:
+                        NotificationAudience.CUSTOMER,
+
+                    title:
+                        'Service started',
+
+                    message:
+                        `Service has started for booking ${booking.bookingNumber}.`,
+
+                    bookingId:
+                        booking.id,
+
+                    tx,
+                });
+
+                return tx.booking.findUnique({
+                    where: {
+                        id: bookingId,
+                    },
+                });
             },
-        });
+        );
     }
 
     async completeBooking(
@@ -836,6 +916,8 @@ export class PartnerService {
                 },
                 select: {
                     id: true,
+                    bookingNumber: true,
+                    userId: true,
                     partnerId: true,
                     status: true,
                 },
@@ -887,6 +969,27 @@ export class PartnerService {
                             increment: 1,
                         },
                     },
+                });
+
+                await this.notificationService.create({
+                    userId: booking.userId,
+
+                    type:
+                        NotificationType.BOOKING_COMPLETED,
+
+                    audience:
+                        NotificationAudience.CUSTOMER,
+
+                    title:
+                        'Service completed',
+
+                    message:
+                        `Your service for booking ${booking.bookingNumber} has been completed.`,
+
+                    bookingId:
+                        booking.id,
+
+                    tx,
                 });
 
                 return tx.booking.findUnique({

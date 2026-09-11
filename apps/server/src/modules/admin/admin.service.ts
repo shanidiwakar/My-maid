@@ -1,16 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { AssignPartnerDto } from './dto/assign-partner.dto';
-import { BookingStatus, PartnerStatus, PartnerAvailability, } from '.prisma/client/default';
+import { BookingStatus, PartnerStatus, PartnerAvailability, NotificationType, NotificationAudience } from '.prisma/client';
 import { UpdatePartnerStatusDto } from './dto/update-partner-status.dto';
 import { PartnerQueryDto } from './dto/partner-query.dto';
 import { AdminBookingQueryDto } from './dto/admin-booking-query.dto';
 import { NearbyPartnerQueryDto } from './dto/nearby-partner-query.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class AdminService {
     constructor(
         private readonly prisma: PrismaService,
+        private readonly notificationService: NotificationService,
     ) { }
 
     async getPartners(query: PartnerQueryDto) {
@@ -980,6 +982,46 @@ export class AdminService {
                         'Partner is no longer available',
                     );
                 }
+
+                await this.notificationService.create({
+                    userId: booking.userId,
+
+                    type:
+                        NotificationType.PARTNER_ASSIGNED,
+
+                    audience:
+                        NotificationAudience.CUSTOMER,
+
+                    title:
+                        'Partner assigned',
+
+                    message:
+                        `A partner has been assigned to booking ${booking.bookingNumber}.`,
+
+                    bookingId: booking.id,
+
+                    tx,
+                });
+
+                await this.notificationService.create({
+                    userId: partner.userId,
+
+                    type:
+                        NotificationType.PARTNER_ASSIGNED,
+
+                    audience:
+                        NotificationAudience.PARTNER,
+
+                    title:
+                        'New booking assigned',
+
+                    message:
+                        `Booking ${booking.bookingNumber} has been assigned to you.`,
+
+                    bookingId: booking.id,
+
+                    tx,
+                });
 
                 return tx.booking.findUnique({
                     where: {

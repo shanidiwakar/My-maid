@@ -1,14 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/database/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { Address, BookingStatus, Prisma, Service } from '@prisma/client';
+import { Address, BookingStatus, Prisma, Service, NotificationType, NotificationAudience, PartnerAvailability } from '@prisma/client';
 import { BookingQueryDto } from './dto/booking-query.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class BookingService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
   ) { }
 
   async create(userId: string, dto: CreateBookingDto) {
@@ -161,47 +163,93 @@ export class BookingService {
     bookingNumber,
     pricing,
   }: any) {
-    return this.prisma.booking.create({
-      data: {
-        bookingNumber,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const booking =
+          await tx.booking.create({
+            data: {
+              bookingNumber,
 
-        userId,
+              userId,
 
-        serviceId: service.id,
+              serviceId: service.id,
 
-        addressId: address.id,
+              addressId: address.id,
 
-        bookingDate: new Date(dto.bookingDate),
+              bookingDate:
+                new Date(dto.bookingDate),
 
-        slotStart: new Date(dto.slotStart),
+              slotStart:
+                new Date(dto.slotStart),
 
-        slotEnd: new Date(dto.slotEnd),
+              slotEnd:
+                new Date(dto.slotEnd),
 
-        quantity: dto.quantity,
+              quantity: dto.quantity,
 
-        // Service Snapshot
-        serviceName: service.name,
-        serviceDuration: service.duration,
-        unitPrice: pricing.unitPrice,
+              // Service Snapshot
+              serviceName: service.name,
+              serviceDuration:
+                service.duration,
+              unitPrice:
+                pricing.unitPrice,
 
-        // Pricing
-        totalPrice: pricing.totalPrice,
-        discount: pricing.discount,
-        finalAmount: pricing.finalAmount,
+              // Pricing
+              totalPrice:
+                pricing.totalPrice,
+              discount:
+                pricing.discount,
+              finalAmount:
+                pricing.finalAmount,
 
-        // Address Snapshot
-        houseNumber: address.houseNumber,
-        buildingName: address.buildingName,
-        addressLine1: address.addressLine1,
-        addressLine2: address.addressLine2,
-        landmark: address.landmark,
-        cityName: address.city.name,
-        serviceAreaName: address.serviceArea.name,
-        pincode: address.pincode,
+              // Address Snapshot
+              houseNumber:
+                address.houseNumber,
+              buildingName:
+                address.buildingName,
+              addressLine1:
+                address.addressLine1,
+              addressLine2:
+                address.addressLine2,
+              landmark:
+                address.landmark,
+              cityName:
+                address.city.name,
+              serviceAreaName:
+                address.serviceArea.name,
+              pincode:
+                address.pincode,
 
-        notes: dto.notes,
+              latitude:
+                address.latitude,
+              longitude:
+                address.longitude,
+
+              notes: dto.notes,
+            },
+          });
+
+        await this.notificationService.create({
+          userId,
+
+          type: NotificationType.BOOKING_CREATED,
+
+          audience:
+            NotificationAudience.CUSTOMER,
+
+          title: 'Booking created',
+
+          message:
+            `Your booking ${booking.bookingNumber} has been created successfully.`,
+
+          bookingId: booking.id,
+
+          tx,
+        });
+
+        return booking;
       },
-    });
+    );
   }
 
   async getBookings(
@@ -297,7 +345,7 @@ export class BookingService {
       },
     };
   }
-  
+
   async getBooking(
     userId: string,
     bookingId: string,
@@ -408,6 +456,13 @@ export class BookingService {
         where: {
           id: bookingId,
         },
+        select: {
+          id: true,
+          bookingNumber: true,
+          userId: true,
+          partnerId: true,
+          status: true,
+        },
       });
 
     if (!booking) {
@@ -418,7 +473,7 @@ export class BookingService {
 
     if (booking.userId !== userId) {
       throw new ForbiddenException(
-        'You are not authorized to cancel this booking',
+        'You are not allowed to cancel this booking',
       );
     }
 
@@ -427,48 +482,116 @@ export class BookingService {
       BookingStatus.CONFIRMED,
     ];
 
-    if (!cancellableStatuses.includes(booking.status)) {
+    if (
+      !cancellableStatuses.includes(
+        booking.status,
+      )
+    ) {
       throw new BadRequestException(
-        `Booking cannot be cancelled in ${booking.status} status`,
+        'Booking cannot be cancelled at this stage',
       );
     }
 
-    const result =
-      await this.prisma.booking.updateMany({
-        where: {
-          id: bookingId,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const result =
+          await tx.booking.updateMany({
+            where: {
+              id: bookingId,
+              userId,
+              status: {
+                in: cancellableStatuses,
+              },
+            },
+            data: {
+              status:
+                BookingStatus.CANCELLED,
+              cancelledReason:
+                dto.reason,
+            },
+          });
+
+        if (result.count !== 1) {
+          throw new BadRequestException(
+            'Booking could not be cancelled',
+          );
+        }
+
+        if (booking.partnerId) {
+          const partner =
+            await tx.partner.findUnique({
+              where: {
+                id: booking.partnerId,
+              },
+              select: {
+                id: true,
+                userId: true,
+              },
+            });
+
+          if (partner) {
+            await tx.partner.update({
+              where: {
+                id: partner.id,
+              },
+              data: {
+                availability:
+                  PartnerAvailability.AVAILABLE,
+              },
+            });
+
+            await this.notificationService.create({
+              userId:
+                partner.userId,
+
+              type:
+                NotificationType.BOOKING_CANCELLED,
+
+              audience:
+                NotificationAudience.PARTNER,
+
+              title:
+                'Booking cancelled',
+
+              message:
+                `Booking ${booking.bookingNumber} has been cancelled by the customer.`,
+
+              bookingId:
+                booking.id,
+
+              tx,
+            });
+          }
+        }
+
+        await this.notificationService.create({
           userId,
-          status: {
-            in: [
-              BookingStatus.PENDING,
-              BookingStatus.CONFIRMED,
-            ],
+
+          type:
+            NotificationType.BOOKING_CANCELLED,
+
+          audience:
+            NotificationAudience.CUSTOMER,
+
+          title:
+            'Booking cancelled',
+
+          message:
+            `Your booking ${booking.bookingNumber} has been cancelled successfully.`,
+
+          bookingId:
+            booking.id,
+
+          tx,
+        });
+
+        return tx.booking.findUnique({
+          where: {
+            id: bookingId,
           },
-        },
-        data: {
-          status: BookingStatus.CANCELLED,
-          cancelledReason: dto.reason,
-        },
-      });
-
-    if (result.count !== 1) {
-      throw new BadRequestException(
-        'Booking can no longer be cancelled',
-      );
-    }
-
-    return this.prisma.booking.findUnique({
-      where: {
-        id: bookingId,
+        });
       },
-      select: {
-        id: true,
-        bookingNumber: true,
-        status: true,
-        cancelledReason: true,
-        updatedAt: true,
-      },
-    });
+    );
   }
 
   private async transitionBooking(

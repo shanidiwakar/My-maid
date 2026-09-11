@@ -20,6 +20,8 @@ import { BookingModule } from './modules/booking/booking.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { CustomerModule } from './modules/customer/customer.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { ScheduleModule } from '@nestjs/schedule/dist/schedule.module';
 
 @Module({
   imports: [
@@ -28,7 +30,8 @@ import { CustomerModule } from './modules/customer/customer.module';
       load: config,
       envFilePath: '.env',
     }),
-    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule, AddressModule, LocationModule, ServiceModule, RecommendationModule, BookingModule, PartnerModule, AdminModule, CustomerModule],
+    PrismaModule, HealthModule, AuthModule, UsersModule, ProfileModule, AddressModule, LocationModule, ServiceModule, RecommendationModule, BookingModule, PartnerModule, AdminModule, CustomerModule, NotificationModule,
+    ScheduleModule.forRoot(),],
   controllers: [AppController],
   providers: [
     AppService,
